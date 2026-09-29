@@ -6,7 +6,6 @@ See CALL_FLOW.md for the state diagram.
 """
 
 import logging
-import re
 import uuid
 
 from sqlalchemy import select
@@ -426,4 +425,4 @@ def _speak(session: VoiceCallSession, twiml_body: str) -> str:
 
 
 def _extract_spoken_text(twiml_body: str) -> str:
-    return " ".join(re.findall(r"<Say[^>]*>(.*?)</Say>", twiml_body, re.DOTALL)).strip()
+    return " ".join(twiml.spoken_lines(twiml_body)).strip()

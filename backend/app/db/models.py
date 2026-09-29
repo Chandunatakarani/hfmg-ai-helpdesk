@@ -61,6 +61,13 @@ class EscalationReason(str, enum.Enum):
     SYSTEM_ERROR = "SYSTEM_ERROR"
 
 
+class VoiceCallChannel(str, enum.Enum):
+    """How the call reached the orchestrator -- Twilio webhooks or the SIP gateway."""
+
+    TWILIO = "TWILIO"
+    SIP = "SIP"
+
+
 # Valid forward transitions for a ticket's status. Used by TicketService to
 # reject nonsensical transitions (e.g. CLOSED -> NEW) before hitting the DB.
 VALID_STATUS_TRANSITIONS: dict[TicketStatus, set[TicketStatus]] = {
@@ -143,7 +150,17 @@ class VoiceCallSession(Base):
     __tablename__ = "voice_call_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Holds whichever provider's unique call identifier applies -- Twilio's
+    # CallSid for `channel=TWILIO`, the SIP Call-ID for `channel=SIP`. Kept
+    # under its original name to avoid an API/frontend-schema break; the
+    # column plays a channel-agnostic role now.
     twilio_call_sid: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    channel: Mapped[VoiceCallChannel] = mapped_column(
+        SQLEnum(VoiceCallChannel, name="voice_call_channel_enum"),
+        nullable=False,
+        default=VoiceCallChannel.TWILIO,
+        server_default=VoiceCallChannel.TWILIO.value,
+    )
     from_number: Mapped[str] = mapped_column(String(32), nullable=False)
     to_number: Mapped[str] = mapped_column(String(32), nullable=False)
 

@@ -5,17 +5,13 @@ TwiML. All conversation logic lives in orchestrator.py.
 """
 
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.summarizer import generate_summary_for_ticket
 from app.db.base import get_db
-from app.db.models import EscalationReason, VoiceCallState
-from app.notifications.email import send_ticket_notification
-from app.services import ticket_service
-from app.voice import orchestrator, scripts, twiml
+from app.db.models import EscalationReason
+from app.voice import call_lifecycle, orchestrator, scripts, twiml
 from app.voice.security import verify_twilio_signature
 from app.voice.session import get_or_create_session, get_session
 
@@ -28,19 +24,6 @@ TWIML_MEDIA_TYPE = "application/xml"
 
 def _twiml(body: str) -> Response:
     return Response(content=body, media_type=TWIML_MEDIA_TYPE)
-
-
-async def _dispatch_ticket_tasks(
-    db: AsyncSession, background_tasks: BackgroundTasks, ticket_id
-) -> None:
-    """Fire the same background work the web form fires.
-
-    The AI summary is deliberately not awaited -- the caller hears their ticket
-    number immediately and the summary lands seconds later.
-    """
-    ticket = await ticket_service.get_ticket(db, ticket_id)
-    background_tasks.add_task(send_ticket_notification, ticket, "created")
-    background_tasks.add_task(generate_summary_for_ticket, ticket.id)
 
 
 @router.post("/voice", dependencies=[Depends(verify_twilio_signature)])
@@ -100,7 +83,7 @@ async def gather(
             return _twiml(twiml.say_and_hangup(scripts.SYSTEM_ERROR))
 
     if outcome.ticket_id is not None:
-        await _dispatch_ticket_tasks(db, background_tasks, outcome.ticket_id)
+        await call_lifecycle.dispatch_ticket_tasks(db, background_tasks, outcome.ticket_id)
 
     logger.info(
         "call=%s state=%s misunderstandings=%s stt_confidence=%s",
@@ -127,28 +110,7 @@ async def call_status(
     if session is None:
         return Response(status_code=204)
 
-    session.ended_at = datetime.now(timezone.utc)
-
-    terminal = (VoiceCallState.COMPLETED, VoiceCallState.ESCALATED, VoiceCallState.ABANDONED)
-    if session.state in terminal or session.ticket_id is not None:
-        await db.commit()
-        return Response(status_code=204)
-
-    session.state = VoiceCallState.ABANDONED
-
-    # Safety net: the caller had a real problem and a reachable number, so
-    # don't lose it just because the call dropped.
-    has_description = bool(session.collected.get("description"))
-    has_phone = bool(session.collected.get("phone_number") or session.from_number)
-    if has_description and has_phone:
-        ticket = await orchestrator.salvage_abandoned_call(db, session)
-        await db.commit()
-        await _dispatch_ticket_tasks(db, background_tasks, ticket.id)
-        logger.info("Salvaged abandoned call %s into ticket %s", call_sid, ticket.ticket_number)
-    else:
-        await db.commit()
-        logger.info("Call %s abandoned (%s) with nothing to salvage", call_sid, twilio_status)
-
+    await call_lifecycle.finalize_call(db, session, background_tasks, ended_reason=twilio_status)
     return Response(status_code=204)
 
 

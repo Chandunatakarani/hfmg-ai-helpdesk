@@ -4,6 +4,8 @@ Uses the Twilio SDK rather than hand-built XML so caller-supplied values
 (names, emails) are escaped correctly.
 """
 
+import re
+
 from twilio.twiml.voice_response import Gather, VoiceResponse
 
 from app.core.config import get_settings
@@ -66,3 +68,18 @@ def say_then_ask(statement: str, prompt: str) -> str:
     response.append(gather)
     response.redirect(f"{GATHER_ACTION}?silent=1", method="POST")
     return str(response)
+
+
+def spoken_lines(twiml_body: str) -> list[str]:
+    """Recover the plain text an `ask`/`say_and_hangup`/`say_then_ask` result speaks.
+
+    Lets a non-Twilio channel (the SIP gateway) reuse the orchestrator's TwiML
+    output as its source of truth, instead of duplicating the state machine's
+    scripted responses in a second format.
+    """
+    return re.findall(r"<Say[^>]*>(.*?)</Say>", twiml_body, re.DOTALL)
+
+
+def expects_reply(twiml_body: str) -> bool:
+    """Whether the caller should be prompted for another turn, or the call is ending."""
+    return "<Gather" in twiml_body

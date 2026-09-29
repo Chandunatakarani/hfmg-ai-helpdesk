@@ -97,20 +97,31 @@ async def check_twilio() -> DependencyCheck:
 
 
 async def check_email() -> DependencyCheck:
-    if settings.email_provider != "sendgrid" or not settings.sendgrid_api_key:
-        return DependencyCheck(status="down", checked_at=_now())
+    if not settings.outlook_api_base_url:
+        return DependencyCheck(
+            status="down",
+            checked_at=_now()
+        )
 
     try:
-        async with httpx.AsyncClient(timeout=_CHECK_TIMEOUT_SECONDS) as client:
-            # /v3/scopes is SendGrid's cheapest authenticated call -- it
-            # just confirms the key is valid and reachable, no email sent.
+        async with httpx.AsyncClient(
+            timeout=_CHECK_TIMEOUT_SECONDS
+        ) as client:
+
             response = await client.get(
-                "https://api.sendgrid.com/v3/scopes",
-                headers={"Authorization": f"Bearer {settings.sendgrid_api_key}"},
+                settings.outlook_api_base_url
             )
-        return DependencyCheck(status="operational" if response.status_code < 400 else "down", checked_at=_now())
+
+        return DependencyCheck(
+            status="operational" if response.status_code < 500 else "down",
+            checked_at=_now()
+        )
+
     except Exception:
-        return DependencyCheck(status="down", checked_at=_now())
+        return DependencyCheck(
+            status="down",
+            checked_at=_now()
+        )
 
 
 async def get_dependency_health(db: AsyncSession) -> dict[str, DependencyCheck]:

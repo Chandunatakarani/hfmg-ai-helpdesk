@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     email_from: str = "reminder@hfmg.net"
     helpdesk_email: str = "helpdesk@hfmg.net"
 
+    # --- Outlook provider (internal Exchange/Graph mail service, another server) ---
+    # No trailing slash, e.g. "http://172.22.6.98:4200". Endpoint path is fixed:
+    # POST {outlook_api_base_url}/api/Values/mail/send.
+    outlook_api_base_url: str = "http://172.22.6.98:4200"
+    outlook_send_timeout_seconds: float = 10.0
+    outlook_send_max_retries: int = 2
+
     enable_ai_summary: bool = False
 
     # --- LLM provider ---
@@ -64,6 +71,12 @@ class Settings(BaseSettings):
     voice_nlu_max_retries: int = 1
     voice_max_misunderstandings: int = 3
     voice_max_email_attempts: int = 2
+
+    # --- SIP gateway (Nextiva extension, via a SIPSorcery service on another
+    # server) -- a second front end for the same voice orchestrator above.
+    # Shared secret the gateway presents as `Authorization: Bearer <token>`;
+    # there's no per-request signature scheme here the way Twilio has one.
+    voice_sip_gateway_token: str = ""
 
     @field_validator("openai_temperature", mode="before")
     @classmethod

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import VoiceCallSession, VoiceCallState
+from app.db.models import VoiceCallChannel, VoiceCallSession, VoiceCallState
 
 # Caller ID values Twilio sends when the number is withheld or unavailable.
 _UNUSABLE_CALLER_IDS = {"", "anonymous", "unknown", "restricted", "private", "+266696687"}
@@ -24,15 +24,21 @@ async def get_session(db: AsyncSession, call_sid: str) -> VoiceCallSession | Non
 
 
 async def get_or_create_session(
-    db: AsyncSession, *, call_sid: str, from_number: str, to_number: str
+    db: AsyncSession,
+    *,
+    call_sid: str,
+    from_number: str,
+    to_number: str,
+    channel: VoiceCallChannel = VoiceCallChannel.TWILIO,
 ) -> VoiceCallSession:
-    """Idempotent by CallSid, so a Twilio retry of turn 0 resumes the same call."""
+    """Idempotent by call id, so a retried turn 0 (Twilio, or the SIP gateway) resumes the same call."""
     existing = await get_session(db, call_sid)
     if existing is not None:
         return existing
 
     session = VoiceCallSession(
         twilio_call_sid=call_sid,
+        channel=channel,
         from_number=from_number or "unknown",
         to_number=to_number or "unknown",
         state=VoiceCallState.GREETING,

@@ -9,6 +9,7 @@ from functools import lru_cache
 
 from app.core.config import get_settings
 from app.notifications.base import EmailProvider
+from app.notifications.outlook_provider import OutlookProvider
 from app.notifications.sendgrid_provider import SendGridProvider
 
 logger = logging.getLogger("hfmg.notifications.factory")
@@ -17,6 +18,7 @@ settings = get_settings()
 
 _PROVIDERS = {
     "sendgrid": SendGridProvider,
+    "outlook": OutlookProvider,
 }
 
 
